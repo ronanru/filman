@@ -10,7 +10,35 @@ You should have received a copy of the GNU General Public License along with thi
 
 import { getFileIcon, getFolderIcon } from './icons.ts';
 
-const print = (str: string) => Deno.writeSync(Deno.stdout.rid, new TextEncoder().encode(str));
+const print = (str: string) => Deno.writeSync(Deno.stdout.rid, new TextEncoder().encode(str)),
+  render = () => {
+    files = [...Deno.readDirSync(folder)]
+      .sort((a, b) => (a.name < b.name ? 1 : -1))
+      .sort(({ isFile }) => (isFile ? 1 : -1));
+    const { rows, columns } = Deno.consoleSize(Deno.stdout.rid);
+    if (top > rows) top = 0;
+    if (selectedFile - rows + 2 > top) top = selectedFile - rows + 2;
+    else if (selectedFile < top) top = selectedFile;
+    print(
+      `\x1b[30;107;1m ${folder}/${new Array(columns - folder.length - 2)
+        .fill(' ')
+        .join('')}\x1b[0m` +
+        files
+          .map(
+            ({ name, isDirectory, isFile }, i) =>
+              `${selectedFile === i ? '\x1b[30;107;1m' : ''} ${
+                isFile ? getFileIcon(name) : getFolderIcon(name)
+              } ${name}${isDirectory ? '/' : ''} \x1b[0m${new Array(
+                columns - name.length - 4 - (isDirectory ? 1 : 0)
+              )
+                .fill(' ')
+                .join('')}`
+          )
+          .slice(top, rows + top - 1)
+          .join('\n') +
+        (rows - 1 > files.length ? new Array(rows - 1 - files.length).fill('\n').join('') : '')
+    );
+  };
 
 let folder = Deno.env.get('HOME') as string, // path to current folder
   files: Deno.DirEntry[] = [],
@@ -22,34 +50,7 @@ print('\x1b[?1049h\x1b[0;0r\x1b[?25l'); // Save terminal and Hide cursor
 
 onunload = () => print('\x1b[?1049l\x1b[?25h'); // Load saved terminal and Show cursor
 
-const renderFrame = () => {
-  files = [...Deno.readDirSync(folder)]
-    .sort((a, b) => (a.name < b.name ? 1 : -1))
-    .sort(({ isFile }) => (isFile ? 1 : -1));
-  const { rows, columns } = Deno.consoleSize(Deno.stdout.rid);
-  if (top > rows) top = 0;
-  while (selectedFile >= top + rows - 1) top++;
-  while (selectedFile < top) top--;
-  print(
-    `\x1b[30;107;1m ${folder}/${new Array(columns - folder.length - 2).fill(' ').join('')}\x1b[0m` +
-      files
-        .map(
-          ({ name, isDirectory, isFile }, i) =>
-            `${selectedFile === i ? '\x1b[30;107;1m' : ''} ${
-              isFile ? getFileIcon(name) : getFolderIcon(name)
-            } ${name}${isDirectory ? '/' : ''} \x1b[0m${new Array(
-              columns - name.length - 4 - (isDirectory ? 1 : 0)
-            )
-              .fill(' ')
-              .join('')}`
-        )
-        .slice(top, rows + top - 1)
-        .join('\n') +
-      (rows - 1 > files.length ? new Array(rows - 1 - files.length).fill('\n').join('') : '')
-  );
-};
-
-renderFrame();
+render();
 
 while (true) {
   const buffer = new Uint8Array(1);
@@ -60,20 +61,16 @@ while (true) {
       Deno.exit();
       break;
     case 66: // Arrow Down
-      // top++;
       selectedFile = Math.min(files.length - 1, selectedFile + 1);
-      renderFrame();
       break;
     case 65: // Arrow Top
       selectedFile = Math.max(0, selectedFile - 1);
-      renderFrame();
       break;
     case 68: // Arrow Left
       if (folder === '/') break;
       folder = folder.slice(0, -1).split('/').slice(0, -1).join('/');
       top = 0;
       selectedFile = 0;
-      renderFrame();
       break;
     case 13: // Enter
       if (files[selectedFile].isFile) {
@@ -88,13 +85,17 @@ while (true) {
       folder += `/${files[selectedFile].name}`;
       top = 0;
       selectedFile = 0;
-      renderFrame();
       break;
     case 20: // Ctrl + t
       Deno.run({
         cmd: [Deno.env.get('SHELL') as string],
         cwd: folder
       });
+      break;
+    case 126: // Delete
+    case 4: // Ctrl + d
+    case 18: // Ctrl + r
+      Deno.removeSync(`${folder}/${files[selectedFile].name}`, { recursive: true });
       break;
     default: {
       const filteredFiles = files
@@ -107,8 +108,8 @@ while (true) {
           filteredFiles[
             (filteredFiles.findIndex(({ i }) => i === selectedFile) + 1) % filteredFiles.length
           ].i;
-      renderFrame();
       // console.log(`\x1b[2J${buffer}`);
     }
   }
+  render();
 }
