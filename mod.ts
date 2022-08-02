@@ -150,15 +150,18 @@ while (true) {
         case '\r': // Enter
           open();
           break;
-        case '\x20': // Ctrl + t
-          Deno.run({
-            cmd: [Deno.env.get('SHELL') as string],
-            cwd: folder
-          });
+        case '\x14': // Ctrl + t
+          // TODO: Fix
+
+          // Deno.run({
+          //   cmd: ['/bin/sh', '-c', `". ${Deno.env.get('SHELL')}"`],
+          //   cwd: folder,
+          //   stdin: 'inherit',
+          //   stdout: 'inherit'
+          // });
           break;
         case '[3~': // Delete
         case '\x04': // Ctrl + d
-        case '\x18': // Ctrl + r
           overlay = [
             `Do you want to delete ${files[selectedFile].name}? [y,N]`,
             '',
@@ -167,6 +170,7 @@ while (true) {
               Deno.removeSync(`${folder}/${files[selectedFile].name}`, { recursive: true })
           ];
           break;
+        case '\x12': // Ctrl + r
         case 'OQ': // F2
           overlay = [
             `New name for ${files[selectedFile].name}`,
