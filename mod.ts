@@ -101,7 +101,7 @@ while (true) {
       if (!key) return;
       if (key.startsWith('[<') && key.at(-1)?.toLowerCase() === 'm' /* is mouse event */) {
         if (overlay || key.at(-1) === 'm') return;
-        const [action, x, y] = key
+        const [action, _x, y] = key
           .slice(2, -1)
           .split(';')
           .map(c => Number(c));
@@ -125,14 +125,13 @@ while (true) {
             overlay[2](overlay[1]);
             overlay = null;
             break;
-          case '\b': // Backspace
+          case '\x7f': // Backspace
             overlay[1] = overlay[1].slice(0, -1);
             break;
           default:
-            overlay[1] += decoder.decode(buffer);
+            overlay[1] += key;
             break;
         }
-        render();
         return;
       }
       switch (key) {
@@ -168,8 +167,16 @@ while (true) {
               Deno.removeSync(`${folder}/${files[selectedFile].name}`, { recursive: true })
           ];
           break;
+        case 'OQ': // F2
+          overlay = [
+            `New name for ${files[selectedFile].name}`,
+            '',
+            answer =>
+              answer &&
+              Deno.renameSync(`${folder}/${files[selectedFile].name}`, `${folder}/${answer}`)
+          ];
+          break;
         default: {
-          // console.log(key);
           const filteredFiles = files
             .map((file, i) => ({ ...file, i }))
             .filter(({ name }) => name.toLowerCase().startsWith(key.toLowerCase()));
