@@ -22,6 +22,7 @@ import { getFileIcon, getFolderIcon } from './icons.ts';
 const decoder = new TextDecoder(),
   print = (str: string) => Deno.writeSync(Deno.stdout.rid, new TextEncoder().encode(str)),
   repeat = (char: string, count: number) => new Array(count).fill(char).join(''),
+  selectedFiles = new Set<string>(),
   render = () => {
     const { rows, columns } = Deno.consoleSize(Deno.stdout.rid);
     if (overlay) {
@@ -35,19 +36,18 @@ const decoder = new TextDecoder(),
     files = [...Deno.readDirSync(folder || '/')]
       .sort((a, b) => (a.name < b.name ? 1 : -1))
       .sort(({ isFile }) => (isFile ? 1 : -1));
-    if (selectedFile - rows + 2 > top) top = selectedFile - rows + 2;
-    else if (selectedFile < top) top = selectedFile;
+    if (highlightedFile - rows + 2 > top) top = highlightedFile - rows + 2;
+    else if (highlightedFile < top) top = highlightedFile;
     print(
       `\x1b[30;107;1m ${folder}/${repeat(' ', columns - folder.length - 2)}\x1b[0m` +
         files
           .map(
             ({ name, isDirectory, isFile }, i) =>
-              `${selectedFile === i ? '\x1b[30;107;1m' : ''} ${
-                isFile ? getFileIcon(name) : getFolderIcon(name)
-              } ${name}${isDirectory ? '/' : ''} \x1b[0m${repeat(
-                ' ',
-                columns - name.length - 4 - (isDirectory ? 1 : 0)
-              )}`
+              `${highlightedFile === i ? '\x1b[30;107;1m' : ''} ${
+                selectedFiles.has(name) ? '⬤' : ' '
+              } ${isFile ? getFileIcon(name) : getFolderIcon(name)} ${name}${
+                isDirectory ? '/' : ''
+              } \x1b[0m${repeat(' ', columns - name.length - 6 - (isDirectory ? 1 : 0))}`
           )
           .slice(top, rows + top - 1)
           .join('\n') +
@@ -55,39 +55,49 @@ const decoder = new TextDecoder(),
     );
   },
   open = () => {
-    if (files[selectedFile].isFile) {
+    if (files[highlightedFile].isFile) {
       Deno.run({
-        cmd: ['xdg-open', `${folder}/${files[selectedFile].name}`],
+        cmd: ['xdg-open', `${folder}/${files[highlightedFile].name}`],
         stdout: 'null',
         stderr: 'null',
         stdin: 'null'
       });
       return;
     }
-    folder += `/${files[selectedFile].name}`;
+    folder += `/${files[highlightedFile].name}`;
     top = 0;
-    selectedFile = 0;
+    highlightedFile = 0;
+    selectedFiles.clear();
   },
-  down = () => (selectedFile = Math.min(files.length - 1, selectedFile + 1)),
-  up = () => (selectedFile = Math.max(0, selectedFile - 1));
+  down = () => (highlightedFile = Math.min(files.length - 1, highlightedFile + 1)),
+  up = () => (highlightedFile = Math.max(0, highlightedFile - 1)),
+  exit = () => {
+    print('\x1b[?1049l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1005l\x1b[?1006l'); // Enable default handling on exit;
+    Deno.exit();
+  };
 
 let folder = Deno.env.get('HOME') as string, // path to current folder
   files: Deno.DirEntry[] = [],
-  selectedFile = 0,
+  highlightedFile = 0,
   top = 0,
   overlay: [string, string, (string: string) => void] | null = null;
 
 Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
 print('\x1b[?25l\x1b[?1049h\x1b[0;0r\x1b[?1000h\x1b[?1002h\x1b[?1005h\x1b[?1006h'); // Disable default handling
 
-onunload = () => print('\x1b[?1049l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1005l\x1b[?1006l'); // Enable default handling on exit
+onunload = exit;
+
+Deno.addSignalListener('SIGINT', exit);
+Deno.addSignalListener('SIGTERM', exit);
+Deno.addSignalListener('SIGKILL', exit);
+Deno.addSignalListener('SIGWINCH', render); // on resize;
 
 render();
 
 while (true) {
   const buffer = new Uint8Array(128);
   await Deno.stdin.read(buffer);
-  if ([3, 17].includes(buffer[0])) Deno.exit();
+  if ([17].includes(buffer[0])) exit();
   const decoded = decoder.decode(buffer);
   (decoded.split('\x1b').length > 1
     ? // deno-lint-ignore no-control-regex
@@ -113,8 +123,8 @@ while (true) {
             up();
             break;
           case 0: //click
-            if (selectedFile === y - 2 + top) return open();
-            files[y - 2 + top] && (selectedFile = y - 2 + top);
+            if (highlightedFile === y - 2 + top) return open();
+            files[y - 2 + top] && (highlightedFile = y - 2 + top);
             break;
         }
         return;
@@ -145,7 +155,7 @@ while (true) {
           if (folder === '/') break;
           folder = folder.slice(0, -1).split('/').slice(0, -1).join('/');
           top = 0;
-          selectedFile = 0;
+          highlightedFile = 0;
           break;
         case '\r': // Enter
           open();
@@ -160,24 +170,34 @@ while (true) {
           //   stdout: 'inherit'
           // });
           break;
+        case ' ':
+          selectedFiles[selectedFiles.has(files[highlightedFile].name) ? 'delete' : 'add'](
+            files[highlightedFile].name
+          );
+          break;
         case '[3~': // Delete
         case '\x04': // Ctrl + d
+          if (!selectedFiles.size) selectedFiles.add(files[highlightedFile].name);
           overlay = [
-            `Do you want to delete ${files[selectedFile].name}? [y,N]`,
+            `Do you want to delete ${selectedFiles.size} files? [y,N]`,
             '',
-            answer =>
-              answer.toLowerCase() === 'y' &&
-              Deno.removeSync(`${folder}/${files[selectedFile].name}`, { recursive: true })
+            answer => {
+              if (answer.toLowerCase() !== 'y') return;
+              selectedFiles.forEach(name =>
+                Deno.removeSync(`${folder}/${name}`, { recursive: true })
+              );
+              selectedFiles.clear();
+            }
           ];
           break;
         case '\x12': // Ctrl + r
         case 'OQ': // F2
           overlay = [
-            `New name for ${files[selectedFile].name}`,
+            `New name for ${files[highlightedFile].name}`,
             '',
             answer =>
               answer &&
-              Deno.renameSync(`${folder}/${files[selectedFile].name}`, `${folder}/${answer}`)
+              Deno.renameSync(`${folder}/${files[highlightedFile].name}`, `${folder}/${answer}`)
           ];
           break;
         default: {
@@ -185,9 +205,10 @@ while (true) {
             .map((file, i) => ({ ...file, i }))
             .filter(({ name }) => name.toLowerCase().startsWith(key.toLowerCase()));
           if (filteredFiles.length)
-            selectedFile =
+            highlightedFile =
               filteredFiles[
-                (filteredFiles.findIndex(({ i }) => i === selectedFile) + 1) % filteredFiles.length
+                (filteredFiles.findIndex(({ i }) => i === highlightedFile) + 1) %
+                  filteredFiles.length
               ].i;
         }
       }
