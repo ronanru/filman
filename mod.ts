@@ -89,7 +89,6 @@ onunload = exit;
 
 Deno.addSignalListener('SIGINT', exit);
 Deno.addSignalListener('SIGTERM', exit);
-Deno.addSignalListener('SIGKILL', exit);
 Deno.addSignalListener('SIGWINCH', render); // on resize;
 
 render();
@@ -123,9 +122,13 @@ while (true) {
           case 64: // Scroll up
             up();
             break;
+          // case 32: // drag
+          // if (files[y - 2 + top]) selectedFiles.add(files[y - 2 + top].name);
+          // break;
           case 0: //click
+            selectedFiles.clear();
             if (highlightedFile === y - 2 + top) return open();
-            files[y - 2 + top] && (highlightedFile = y - 2 + top);
+            if (files[y - 2 + top]) highlightedFile = y - 2 + top;
             break;
         }
         return;
@@ -216,7 +219,6 @@ while (true) {
           ];
           break;
         default: {
-          // console.log(key.charCodeAt(0));
           const filteredFiles = files
             .map((file, i) => ({ ...file, i }))
             .filter(({ name }) => name.toLowerCase().startsWith(key.toLowerCase()));
