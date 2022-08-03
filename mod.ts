@@ -18,7 +18,6 @@
 */
 
 import { getFileIcon, getFolderIcon } from './icons.ts';
-
 const decoder = new TextDecoder(),
   print = (str: string) => Deno.writeSync(Deno.stdout.rid, new TextEncoder().encode(str)),
   repeat = (char: string, count: number) => new Array(count).fill(char).join(''),
@@ -39,7 +38,10 @@ const decoder = new TextDecoder(),
     if (highlightedFile - rows + 2 > top) top = highlightedFile - rows + 2;
     else if (highlightedFile < top) top = highlightedFile;
     print(
-      `\x1b[30;107;1m ${folder}/${repeat(' ', columns - folder.length - 2)}\x1b[0m` +
+      `\x1b[30;107;1m ${folder}/${repeat(
+        ' ',
+        columns - folder.length - 24
+      )}|   CODE  |   GUI   \x1b[0m` +
         files
           .map(
             ({ name, isDirectory, isFile }, i) =>
@@ -111,7 +113,7 @@ while (true) {
       if (!key) return;
       if (key.startsWith('[<') && key.at(-1)?.toLowerCase() === 'm' /* is mouse event */) {
         if (overlay || key.at(-1) === 'm') return;
-        const [action, _x, y] = key
+        const [action, x, y] = key
           .slice(2, -1)
           .split(';')
           .map(c => Number(c));
@@ -126,7 +128,21 @@ while (true) {
           // if (files[y - 2 + top]) selectedFiles.add(files[y - 2 + top].name);
           // break;
           case 0: //click
-            selectedFiles.clear();
+            if (y === 1) {
+              const { columns } = Deno.consoleSize(Deno.stdout.rid);
+              if (columns - x < 10 && columns - x > 1)
+                Deno.run({
+                  cmd: ['/bin/xdg-open', '.'],
+                  cwd: folder,
+                  stdout: 'null'
+                });
+              else if (columns - x < 20 && columns - x > 12)
+                Deno.run({
+                  cmd: ['/bin/codium', '.'],
+                  cwd: folder
+                });
+              break;
+            }
             if (highlightedFile === y - 2 + top) return open();
             if (files[y - 2 + top]) highlightedFile = y - 2 + top;
             break;
