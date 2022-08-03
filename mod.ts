@@ -82,7 +82,7 @@ let folder = Deno.env.get('HOME') as string, // path to current folder
   top = 0,
   overlay: [string, string, (string: string) => void] | null = null;
 
-Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
+Deno.setRaw(Deno.stdin.rid, true);
 print('\x1b[?25l\x1b[?1049h\x1b[0;0r\x1b[?1000h\x1b[?1002h\x1b[?1005h\x1b[?1006h'); // Disable default handling
 
 onunload = exit;
@@ -99,6 +99,7 @@ while (true) {
   await Deno.stdin.read(buffer);
   if ([17].includes(buffer[0])) exit();
   const decoded = decoder.decode(buffer);
+  console.log(decoded);
   (decoded.split('\x1b').length > 1
     ? // deno-lint-ignore no-control-regex
       decoded.split(/(?=\x1b)/)
@@ -160,15 +161,29 @@ while (true) {
         case '\r': // Enter
           open();
           break;
-        case '\x14': // Ctrl + t
-          // TODO: Fix
+        // case '\x14': // Ctrl + t
+        // TODO: Fix
 
-          // Deno.run({
-          //   cmd: ['/bin/sh', '-c', `". ${Deno.env.get('SHELL')}"`],
-          //   cwd: folder,
-          //   stdin: 'inherit',
-          //   stdout: 'inherit'
-          // });
+        // Deno.run({
+        //   cmd: ['/bin/sh', '-c', `". ${Deno.env.get('SHELL')}"`],
+        //   cwd: folder,
+        //   stdin: 'inherit',
+        //   stdout: 'inherit'
+        // });
+        // break;
+        case '\x03':
+          if (!selectedFiles.size) selectedFiles.add(files[highlightedFile].name);
+          Deno.run({
+            cmd: [
+              '/bin/sh',
+              '-c',
+              `echo "${[...selectedFiles]
+                .map(file => `file://${folder}/${file}`)
+                .join('\n')}" | xclip -selection clipboard -t text/uri-list`
+            ],
+            cwd: folder
+          });
+          selectedFiles.clear();
           break;
         case ' ':
           selectedFiles[selectedFiles.has(files[highlightedFile].name) ? 'delete' : 'add'](
@@ -194,13 +209,14 @@ while (true) {
         case 'OQ': // F2
           overlay = [
             `New name for ${files[highlightedFile].name}`,
-            '',
+            files[highlightedFile].name,
             answer =>
               answer &&
               Deno.renameSync(`${folder}/${files[highlightedFile].name}`, `${folder}/${answer}`)
           ];
           break;
         default: {
+          // console.log(key.charCodeAt(0));
           const filteredFiles = files
             .map((file, i) => ({ ...file, i }))
             .filter(({ name }) => name.toLowerCase().startsWith(key.toLowerCase()));
