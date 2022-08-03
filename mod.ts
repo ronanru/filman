@@ -100,7 +100,6 @@ while (true) {
   await Deno.stdin.read(buffer);
   if ([17].includes(buffer[0])) exit();
   const decoded = decoder.decode(buffer);
-  console.log(decoded);
   (decoded.split('\x1b').length > 1
     ? // deno-lint-ignore no-control-regex
       decoded.split(/(?=\x1b)/)
