@@ -96,15 +96,13 @@ Deno.addSignalListener('SIGWINCH', render); // on resize;
 render();
 
 while (true) {
-  const buffer = new Uint8Array(128);
+  const buffer = new Uint8Array(2048);
   await Deno.stdin.read(buffer);
   if ([17].includes(buffer[0])) exit();
   const decoded = decoder.decode(buffer);
   (decoded.split('\x1b').length > 1
     ? // deno-lint-ignore no-control-regex
       decoded.split(/(?=\x1b)/)
-    : decoded.length > 1 && !decoded.includes('\x1b')
-    ? decoded.split('')
     : [decoded]
   )
     .map(key => key.replaceAll('\x1b', '').replaceAll('\x00', ''))
@@ -234,6 +232,14 @@ while (true) {
           ];
           break;
         default: {
+          // Deno.writeTextFile('log', key);
+          //Drag and drop
+          if (key[0] === "'" && key.slice(-1) === "'")
+            return Deno.copyFile(
+              key.slice(1, -1),
+              `${folder}/${key.slice(1, -1).split('/').at(-1)}`
+            ).catch(() => {});
+
           const filteredFiles = files
             .map((file, i) => ({ ...file, i }))
             .filter(({ name }) => name.toLowerCase().startsWith(key.toLowerCase()));
