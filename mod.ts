@@ -1,6 +1,6 @@
 #!/bin/env -S deno run --unstable --allow-read --allow-write --allow-env --allow-run
 /*
-  Deno Terminal File Manager
+  FilMan - Terminal File Manager for Linux
   Copyright (C) 2022  Matvey Ryabchikov
 
   This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,18 @@
 */
 
 import { getFileIcon, getFolderIcon } from './icons.ts';
-const decoder = new TextDecoder(),
+import defaultConfig from './config.js'; //TODO: Read config from .config dir
+
+interface Config {
+  icons: boolean;
+  topBarButtons: {
+    name: (folder: string) => string | null;
+    onClick: (folder: string) => unknown;
+  }[];
+}
+
+const config = defaultConfig as Config,
+  decoder = new TextDecoder(),
   print = (str: string) => Deno.writeSync(Deno.stdout.rid, new TextEncoder().encode(str)),
   repeat = (char: string, count: number) => new Array(count).fill(char).join(''),
   selectedFiles = new Set<string>(),
@@ -37,19 +48,27 @@ const decoder = new TextDecoder(),
       .sort(({ isFile }) => (isFile ? 1 : -1));
     if (highlightedFile - rows + 2 > top) top = highlightedFile - rows + 2;
     else if (highlightedFile < top) top = highlightedFile;
+    const topBarButtons = config.topBarButtons
+      .map(button => button.name(folder))
+      .filter(name => name)
+      .map(name => ` ${name} `)
+      .join('|');
     print(
       `\x1b[30;107;1m ${folder}/${repeat(
         ' ',
-        columns - folder.length - 24
-      )}|   CODE  |   GUI   \x1b[0m` +
+        columns - folder.length - topBarButtons.length - 4
+      )}|${topBarButtons} \x1b[0m` +
         files
           .map(
             ({ name, isDirectory, isFile }, i) =>
               `${highlightedFile === i ? '\x1b[30;107;1m' : ''} ${
                 selectedFiles.has(name) ? '⬤' : ' '
-              } ${isFile ? getFileIcon(name) : getFolderIcon(name)} ${name}${
-                isDirectory ? '/' : ''
-              } \x1b[0m${repeat(' ', columns - name.length - 6 - (isDirectory ? 1 : 0))}`
+              } ${
+                config.icons ? `${isFile ? getFileIcon(name) : getFolderIcon(name)} ` : ''
+              }${name}${isDirectory ? '/' : ''} \x1b[0m${repeat(
+                ' ',
+                columns - name.length - 4 - (config.icons ? 2 : 0) - (isDirectory ? 1 : 0)
+              )}`
           )
           .slice(top, rows + top - 1)
           .join('\n') +
@@ -127,6 +146,17 @@ while (true) {
           case 0: //click
             if (y === 1) {
               const { columns } = Deno.consoleSize(Deno.stdout.rid);
+              let offset = 1;
+              for (const button of config.topBarButtons.reverse()) {
+                const name = button.name(folder);
+                if (!name) continue;
+                if (y < columns - offset && y > columns - offset - name.length) {
+                  button.onClick(folder);
+                  break;
+                }
+                offset += name.length + 1;
+              }
+
               if (columns - x < 10 && columns - x > 1)
                 Deno.run({
                   cmd: ['/bin/xdg-open', '.'],

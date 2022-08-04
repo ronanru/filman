@@ -1,8 +1,12 @@
-# Deno Terminal File Manager for Linux
+# FilMan - Terminal File Manager for Linux
+
+## Caution
 
 This is still work in progress and many features are missing.
-Full readme coming soon
 
-## Features:
+## Features
 
-- Cool Icons
+- Supports Nerd Fonts Icons out of the box
+- Mouse support
+- Drag and drop support
+- Fully customizable with config files in JavaScript
