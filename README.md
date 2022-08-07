@@ -1,6 +1,6 @@
 # FilMan - Terminal File Manager for Linux
 
-## Caution
+## Warning
 
 This is still work in progress and many features are missing.
 
